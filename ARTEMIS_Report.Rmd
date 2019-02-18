@@ -1,0 +1,186 @@
+---
+title: "ARTEMIS App Report"
+author: "Wyatt Smith, Wes Hetcher, Dani Millin, Linder Wendt"
+date: "March 14, 2017"
+output: html_document
+---
+
+
+```{r, echo= FALSE, include=FALSE, message=FALSE}
+ozoneintfile <- read.csv("https://raw.githubusercontent.com/wyattjssmith/CMSC205-Project/master/ARTEMIS_ALEX_TimeSeries%20CMSC%20205%20Ozone%20sheet.csv?token=AXxYxYDTyOR5hgSSXsCaLx7AaEWcd_hdks5YzsUhwA%3D%3D")
+
+ARTEMIS <- read.csv("https://raw.githubusercontent.com/wyattjssmith/CMSC205-Project/master/ARTEMIS_Final_Data.csv?token=AX51v0k6yB1ZtVXfO-bsXPPo28ot5fPFks5YzsqCwA%3D%3D")
+
+nox_ozone <- read.csv("https://raw.githubusercontent.com/wyattjssmith/CMSC205-Project/master/Joined%20NOx%20and%20Ozone%20file.csv?token=AXxYxfx6N1YBmB7XFl5-AYvTB3DkbE_Tks5Yye2dwA%3D%3D")
+
+library(lubridate)
+library(tidyverse)
+library(stringr)
+library(gridExtra)
+library(sp)
+library(maps)
+library(ggmap)     # for spatial viz.
+library(viridis)   # for color scales
+```
+
+
+**Introduction:**
+  For this project, we looked at data from Professor Donohoue's research trailer ARTEMIS (Atmospheric Research Trailer for Environmental Monitoring and Interactive Science), collected over the month of November. The data was collected by 3 instruments: a NOx monitor, an ozone monitor, and a weather station. Having worked with this data and previous ARTEMIS data on Excel and Origin and experienced the difficulties and slowness of wrangling and plotting with larger data sets on those platforms, R seemed like a good way to visualize the data. The primary motivation of using this data was the comparable ease of use of R, compared to the previous platforms mentioned. Our initial goal was to explore correlations within the data, specifically looking at the trend in NOx concentration and time. Our focus shifted towards creating an app to quickly visualize large amounts of data, something that was difficult previously. In addition, we also explored one of the correlations we were first interested in: the occurrence of NO2 peaks to see if there is any pattern. We hope that this app will be used in the future for future use of ARTEMIS data.
+
+  **Data:**
+  The data was gathered by Professor Donohue from November 7th to November 28th. The sampling occurred outside Alexander Gym, near campus.  We started from three CSV files, one for NOx, ozone, and the Kestrel weather station. These CSVs had already had the data for the month compiled and joined.  The sampling occurred partially to test modifications made to ARTEMIS, and to test long term sampling.
+
+  
+  
+```{r, echo=FALSE, message=FALSE}
+latt <- 44.257005 
+long <- -88.389919
+# locale18 <- get_map(location = c(lat = latt, lon = long), zoom = 18, maptype = "satellite") 
+locale17 <- get_map(location = c(lat = latt, lon = long), zoom = 17, maptype = "satellite") 
+# locale16 <- get_map(location = c(lat = latt, lon = long), zoom = 16, maptype = "satellite")
+# locale15 <- get_map(location = c(lat = latt, lon = long), zoom = 15, maptype = "satellite")
+
+# v15 <- ggmap(locale15)
+# v16 <- ggmap(locale16)
+v17 <- ggmap(locale17)
+# v18 <- ggmap(locale18)
+
+# grid.arrange(v15, v16, v17, v18)
+v17
+```
+
+**Methods:**
+  Our first challenge was creating a file to format and join the three aforementioned CSVs (See   “Combined Cleaning and Joining File”). Our first goal in creating this file was to separately tidy the data, then group and average each data set to the minute before joining them. After this worked, we moved to compiling the previous steps into one file, where we realized we should filter any outliers prior to the averaging and joining. We then created parameters to filter our NOx and ozone data, by looking at concentration, flow rate, and cell pressure. 
+Some values of the concentration were considerably higher than they should be. This is caused by instrumental error, so our first filter was to remove NOx or ozone concentrations that are significantly higher than they should be, or below zero. Since ARTEMIS is powered by batteries there were times during the collection where the available power and current were too low to keep the instruments’ pumps running. This was very easy to see when plotting cell pressure and flow rate against date time, as those values are pump dependent and it was clear what parameters to set as those values plummeted. We also looked at cell temperature, but found that it was hard to decide parameters for and left the values as are. This was repeated for NOx before both were averaged to a minute and joined.
+
+
+```{r, echo= FALSE, include=FALSE}
+ozoneintfile <- ozoneintfile[-c(1:4), -8] #Remove first four rows with header information in them and last column with NAs
+
+colnames(ozoneintfile) <- c("ozone_log_num", "ozone_ppm", "ozone_cell_temp", "ozone_cell_pressure", "ozone_flow_rate", "date", "time")
+ozone2 <- unite(ozoneintfile, date_time, date, time, sep = " ")
+
+ozone2$date_time <- as.character(ozone2$date_time)
+ozone2$date_time<- str_sub(ozone2$date_time, 1, nchar(ozone2$date_time) -3)
+
+ozone2$date_time <- mdy_hm(ozone2$date_time)
+
+
+ozone2$ozone_log_num <- as.numeric(ozone2$ozone_log_num)
+ozone2$ozone_ppm <- as.numeric(ozone2$ozone_ppm)
+ozone2$ozone_cell_temp <- as.numeric(ozone2$ozone_cell_temp)
+ozone2$ozone_cell_pressure <- as.numeric(ozone2$ozone_cell_pressure)
+ozone2$ozone_flow_rate <- as.numeric(ozone2$ozone_flow_rate)
+
+#Parameterizing data to remove obvious outliers based on previous plotting and observations
+
+
+
+ozone3 <- filter(ozone2, ozone_ppm < 1000, ozone_ppm > -15)
+ozone3 <- filter(ozone2, ozone_flow_rate < 20000, ozone_flow_rate > 350)
+ozone3 <- filter(ozone2, ozone_cell_pressure < 600, ozone_cell_pressure > 200)
+
+# ggplot(ozone2, aes(y = ozone_cell_temp, x = date_time)) + geom_point()
+# ggplot(ozone2, aes(y = ozone_cell_pressure, x = date_time)) + geom_point()
+```
+```{r, echo=FALSE, message=FALSE}
+ggplot(ozone2, aes(y = ozone_cell_pressure, x = date_time)) + geom_point(color = "navy") + labs(title = "Ozone Cell Pressure Across the Month Before Filtering", y = "Ozone Cell Pressure", x = "Date") + theme_gray()
+
+ggplot(ozone3, aes(y = ozone_cell_pressure, x = date_time)) + geom_point(color = "navy") + labs(title = "Ozone Cell Pressure Across the Month After Filtering", y = "Ozone Cell Pressure", x = "Date") + theme_gray()
+```
+  
+
+  
+  The Kestrel values were also averaged to a minute, but this posed its own problem, as the time collection on the values changed from every few seconds to every minute a few days into sampling. This made it more difficult to average the values to a minute. This was fixed through separating the data, tidying, and rejoining. Although this works for this specific dataset, this was a quick fix and it would be better to figure out how to generalize this code to any dataset. The problem was discovered too late, however, and it could not be fixed in this version. 
+As we set on joining our datasets, we decided to create a shiny app instead of solely focusing on finding correlations within our data. Our first plan for the app was to be able to create a correlation plot between any column of data.
+
+
+While part of our group was creating the Shiny app, we also were interested in seeing if there were any obvious correlations with NOx concentration. We started by investigating a time series and noticed what appeared to be a pattern in concentration. Upon zooming in on those peaks, they all occurred at around the same time at night, which is surprising because we would expect these peaks to occur during the day. Due to the time, and the location of our sampling, we started the project expecting these peaks to be from possible trains passing nearby. Based on the location and the direction of the wind when these peaks occur, away from the train, we reason that our peaks are unlikely to occur from the train.
+
+
+```{r, echo=FALSE}
+nox_ozone1 <- nox_ozone
+nox_ozone1$date_time <- ymd_hms(nox_ozone1$date_time)
+
+nox_ozone2 <- filter(nox_ozone1, NO2 > 20)
+
+nox11 <- filter(nox_ozone2, date_time > "2016-11-11 00:00:00", date_time < "2016-11-12 00:00:00")
+
+GridA<- ggplot(nox11, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over 11th", y = "NO2 Concentration  (ppm)", x = "Time") + theme_gray()
+
+
+nox_ozone3 <- filter(nox_ozone2, date_time > "2016-11-14 10:00:00", date_time < "2016-11-15 00:00:00" )
+
+GridB<- ggplot(nox_ozone3, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over 14th", y = "NO2 Concentration  (ppm)", x = "Time") + theme_gray()
+
+
+
+nox17 <- filter(nox_ozone2, date_time > "2016-11-17 00:00:00", date_time < "2016-11-18 00:00:00")
+
+GridC <- ggplot(nox17, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over 17th", y = "NO2 Concentration  (ppm)", x = "Time") + theme_gray()
+
+
+nox_ozone4 <- filter(nox_ozone2, date_time > "2016-11-21 00:00:00", date_time < "2016-11-22 00:00:00")
+
+GridD<- ggplot(nox_ozone4, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over 21st", y = "NO2 Concentration  (ppm)", x = "Time") + theme_gray()
+
+# 
+# grid.arrange(GridA, GridB, GridC, GridD)
+
+ARTEMIS1 <- select(ARTEMIS, -X)
+
+colnames(ARTEMIS1) <- c("Date Time", "Barometic Pressure (mb)", "Density Alititude (m)", "Headwind (m/s)", "Direction - True", "Wind Speed (m/s)", "Wind Chill (?C)", "Direction Magnitude", "Station Pressure (mb)", "Dew Point (?C)", "Cross Wind (m/s)", "Altitude (m)", "Relative Humidity (%)", "Temperature (?C)", "Psychro Wet Bulb Temperature (?C)", "Heat Stress Index (?C)", "Ozone Log Number", "Ozone Concentration (ppm)", "Ozone Cell Temperature (?C)", "Ozone Cell Pressure", "Ozone Flow Rate", "Garbage", "NOx Log Number", "NO2 Concentration (ppm)", "NO Concentration (ppm)", "NOx Concentration (ppm)", "ZnO2", "ZnO", "NOx Cf", "NOx Cell Temperature (?C)", "NOx Cell Pressure","NOx Overflow", "NOx Cell Flow", "Ozone Flow", "PDVa", "PDVb", "PDVo3", "Scrubber Temperature (?C)", "NOx Mode")
+
+ARTEMIS1$`Date Time` <- ymd_hms(ARTEMIS1$`Date Time`)
+
+
+ARTEMIS2 <- filter(ARTEMIS1, `NO2 Concentration (ppm)` > 20)
+
+
+ARTEMIS3 <- filter(ARTEMIS2, `Date Time` > "2016-11-11 00:00:00", `Date Time` < "2016-11-12 00:00:00")
+
+ARTEMISA <- ggplot(ARTEMIS3, aes( y = `NO2 Concentration (ppm)`, x = `Direction - True`)) + geom_point(color = "navy") + labs(title = "Wind Direction compared to NO2 Concentration on the 11th", y = "NO2 Concentration  (ppm)", x = "Wind Direction") + theme_gray()
+
+
+ARTEMIS4 <- filter(ARTEMIS2, `Date Time` > "2016-11-14 00:10:00", `Date Time` < "2016-11-15 00:00:00")
+
+ARTEMISB <- ggplot(ARTEMIS4, aes( y = `NO2 Concentration (ppm)`, x = `Direction - True`)) + geom_point(color = "navy") + labs(title = "Wind Direction compared to NO2 Concentration on the 14th", y = "NO2 Concentration  (ppm)", x = "Wind Direction") + theme_gray()
+
+ARTEMIS5 <- filter(ARTEMIS2, `Date Time` > "2016-11-17 00:10:00", `Date Time` < "2016-11-18 00:00:00")
+
+ARTEMISC <- ggplot(ARTEMIS5, aes( y = `NO2 Concentration (ppm)`, x = `Direction - True`)) + geom_point(color = "navy") + labs(title = "Wind Direction compared to NO2 Concentration on the 17th", y = "NO2 Concentration  (ppm)", x = "Wind Direction") + theme_gray()
+
+ARTEMIS6 <- filter(ARTEMIS2, `Date Time` > "2016-11-21 00:00:00", `Date Time` < "2016-11-22 00:00:00")
+
+ARTEMISD <- ggplot(ARTEMIS6, aes( y = `NO2 Concentration (ppm)`, x = `Direction - True`)) + geom_point(color = "navy") + labs(title = "Wind Direction compared to NO2 Concentration on the 21st", y = "NO2 Concentration  (ppm)", x = "Wind Direction") + theme_gray()
+```
+
+
+```{r, echo=FALSE}
+ggplot(nox_ozone1, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over Month", y = "NO2 Concentration  (ppm)", x = "Date") + theme_gray()
+
+ggplot(nox_ozone2, aes(y = NO2, x = date_time)) + geom_point(color = "navy") + labs(title = "NO2 Concentration Over Month", y = "NO2 Concentration  (ppm)", x = "Date") + theme_gray()
+
+grid.arrange(GridA, GridB, GridC, GridD)
+
+grid.arrange(ARTEMISA, ARTEMISB, ARTEMISC, ARTEMISD)
+```
+
+  When developing a way to visualize the data from ARTEMIS we wanted a flexible way to visualize the relationships between each of the different variables collected by the apparatus. In order to accomplish this we used Shiny to create a plot where the variables could be selected using a drop down menu of each of the variables. In order to make the app intuitive we removed the date variable from the Y axis selection menu, as this should never be plotted as a dependent variable. To make the graph more customizable we also added a series of radio buttons that would allow the graph to have different trend lines depending on the nature of the relationship being visualized. Beyond this we also wanted a print out of important statistics from each of the variables of the data set. To do this we added a checkbox input that could be used to show text containing information about the maximum, minimum, mean, median and relative standard deviation of the selected Y variable. [Link to Shiny App:](https://artemis.shinyapps.io/artemis_visualization_app/)
+	
+	Once we managed to create these features we decided that the plots would be more useful if the scope of the data being displayed could be filtered to the preference of the user. For example, users of our application may choose to examine data from a specific time range. It was important that these functions filtered the entire data set regardless of the selected variables. The date range input allowed us to accomplish this quite nicely. Even if date is not a selected variable, the date range reactive still filters the entire data set to that subsetted range using a reactive function. This also adjusts the output of the statistics printed out at the bottom of the app.
+	
+	After adding our customizable date range feature, our app’s graphs had become more user friendly. However, we still lacked the ability to vertically adjust the scope of our graphs. To fix this, we added two numeric inputs that are interpreted as the minimum and maximum parameters for the dependent variable. After this feature was added, users could investigate our data with much more precision.
+	
+	The coding process for this Shiny app challenged us in unexpected areas, with many seemingly trivial aspects of the code being the focus of a large amount of time. One instance of this was when we were writing our “Print Statistics” table. We unsuccessfully tried a variety of methods, including tables and data tables. We decided to print these measurements as a text, but the spacing was giving us trouble, as we couldn’t figure out how to print each value on its own line. Although we found a fully functioning solution, the four separate if statements that we used cause the code to lose a bit of eloquence. 
+
+  Another roadblock during our coding process came when we tried to make our numeric input section based on the previous input from the variable selection section. Ideally, we wanted the Y Minimum and Y Maximum to have default values that were equal to the minimum and maximum of the Y variable. We found it was too complex to change input values based on previous input values. To work around this problem, we created a checkbox that allows users to view the entire dataset by default but select their own minimum and maximum Y values if they choose to filter the data. 
+
+**Conclusion:**
+	The first iteration the app functions using one data set. We would like to expand the app to be more robust and able to use different data from ARTEMIS without hardcoding. This can also be applied to our joining and cleaning file, which we had to modify for the data specific to this dataset for it to run and join correctly. We would also like to make all of our code more streamlined, as it feels like an excessive amount of repetition in the cleaning and joining file and for formatting the table using one for() loop instead of several. The ability to print additional statistics based on the range being plotted, like boxcar averaging would be of benefit. Finally, we would like to test the app more than we had time for and see what additional issues arise through extended use. 
+
+
+**Acknowledgements:**
+Professor Deanna Donohoue for collecting the data and allowing us to use the data and Professor Adam Loy, you know what you did.
+
+

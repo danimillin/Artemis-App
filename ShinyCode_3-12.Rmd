@@ -1,0 +1,87 @@
+---
+title: "ARTEMIS App"
+author: "Linder Wendt, Dani Millin, Wyatt Smith, Wes Hetcher"
+date: "3/14/2017"
+output: html_document
+runtime: shiny
+---
+```{r, include = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+library(scales)
+library(shiny)
+library(mgcv)
+
+```
+
+```{r, include=FALSE}
+#load in joined data set from github
+ultimatedata <- read.csv("ARTEMIS_Final_Data.csv", encoding = 'UTF-8', fileEncoding = 'ISO8859-1')
+#make date an actual date
+ultimatedata$Date.Time <- ymd_hms(ultimatedata$Date.Time)
+
+ultimatedata<-ultimatedata[-1]
+colnames(ultimatedata) <- c("Date_Time", "Barometic_Pressure_mb", "Density_Altitude_m", "Headwind_mps", "Direction_True", "Wind_Speed_mps", "WindChill_C", "Direction_Magnitude", "Station_Pressure_mb", "Dew_Point_C", "Cross_Wind_mps", "Altitude_m", "Relative_Humidity_percentage", "Temperature_C", "Psychro_Wet_Bulb_Temperature_C", "Heat_Stress_Index_C", "Ozone_Log_Number", "Ozone_Concentration_ppm", "Ozone_Cell_Temperature_C", "Ozone_Cell_Pressure", "Ozone_Flow_Rate", "Garbage", "NOx_Log_Number", "NO2_Concentration_ppm", "NO_Concentration_ppm", "NOx_Concentration_ppm", "ZnO2", "ZnO", "NOx_Cf", "NOx_Cell_Temperature_C", "NOx_Cell_Pressure","NOx_Overflow", "NOx_Cell_Flow", "Ozone_Flow", "PDVa", "PDVb", "PDVo3", "Scrubber_Temperature_C", "NOx_Mode")
+ultimatedata<-ultimatedata[, -22]
+```
+
+```{r, echo = FALSE}
+#X and Y variables select, checkboxes for regression line and smoothing curve, table with summary stats (min, max range, mean, median, standard dev)
+inputPanel(
+  selectInput("X", label = "X Variable:",
+              choices = names(ultimatedata)),
+
+  selectInput("Y", label = "Y Variable:",
+             choices = names(ultimatedata[-1]), selected = names(ultimatedata[23])),
+
+  radioButtons("line", label = "Show Trend Line", choices = c("None", "Smoothing", "Linear Regression")),
+  dateRangeInput("DRI", label = 'Select Date Range', start = '2016-11-07', end = '2016-11-28', min = '2016-11-07', max = '2016-11-28'),
+  checkboxInput("filter_data", label = "Filter Y Variable Data"), 
+  checkboxInput("table_choice", label = "Print Y Variable Statistics"),
+  numericInput("y_min", label = "Y Minimum", value = 0),
+  numericInput("y_max", label = "Y Maximum", value = 0)
+
+)
+#filtering data by date range input and, if selected, y variable range
+date_ult <- reactive({
+  date_filter <- filter(ultimatedata, Date_Time >= input$DRI[1], Date_Time <= input$DRI[2])
+  if(input$filter_data == TRUE){filter(date_filter, date_filter[,input$Y] >= input$y_min, date_filter[,input$Y] <= input$y_max)}else{
+    date_filter
+  }
+})
+
+#Basic plot of variables
+renderPlot({
+p<-    ggplot(date_ult(), aes_string(x = input$X, y = input$Y)) +
+    geom_point(alpha = .2, color = "navy") +
+    labs(title = paste(input$Y, "vs.", input$X), x = input$X, y = input$Y) +
+  theme_gray()
+# radio button if/ else statements
+      if(input$line == "Smoothing"){ p + geom_smooth(color = "black")}
+       else if(input$line == "Linear Regression"){ p + geom_smooth(method = lm, color = "black")
+      }else{p}
+    
+})
+#Yielding the table for statistics
+renderText({
+  if(input$table_choice == TRUE){paste("Minimum: ", round(min(date_ult()[,input$Y]), digits = 3))}})
+renderText({
+    if(input$table_choice == TRUE){paste("Maximum: ", round(max(date_ult()[,input$Y]), digits = 3))}})
+renderText({
+      if(input$table_choice == TRUE){paste("Mean: ", round(mean(date_ult()[,input$Y]), digits = 3))}})
+renderText({
+        if(input$table_choice == TRUE){paste("Median: ",
+                                             round(median(date_ult()[,input$Y]), digits = 3))}})
+renderText({
+          if(input$table_choice == TRUE){paste("Relative Standard Deviation: ", round(((sd(date_ult()[,input$Y]))/(mean(date_ult()[,input$Y])))*100, digits = 3))}
+  })
+
+
+    
+
+
+  
+
+```
